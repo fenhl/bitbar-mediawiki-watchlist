@@ -7,6 +7,7 @@ extern crate serde_json;
 extern crate wikibase;
 extern crate xdg_basedir;
 
+use std::collections::HashMap;
 use std::fmt::{self, Write};
 use std::fs::File;
 
@@ -60,7 +61,7 @@ impl From<wikibase::WikibaseError> for Error {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct WatchlistItem {
     old_revid: u64,
     //revid: u64,
@@ -74,22 +75,30 @@ fn bitbar() -> Result<String, Error> {
     let watchlists = config.wikis.iter().map(|wiki_config| {
         wikibase_config.set_api_url(&wiki_config.api_url[..]);
         let mut json = wikibase::requests::wikibase_request(
-            &format!("{}?action=query&format=json&list=watchlist&wldir=newer&wllimit=max&wlshow=unread&wlowner={}&wltoken={}", wiki_config.api_url, wiki_config.username, wiki_config.watchlist_token),
+            &format!("{}?action=query&format=json&list=watchlist&wlallrev=1&wldir=newer&wllimit=max&wlshow=unread&wlowner={}&wltoken={}", wiki_config.api_url, wiki_config.username, wiki_config.watchlist_token),
             &wikibase_config
         )?;
-        Ok(serde_json::from_value::<Vec<WatchlistItem>>(
+        let watchlist = serde_json::from_value::<Vec<WatchlistItem>>(
             json.pointer_mut("/query/watchlist").ok_or(Error::WatchlistFormat(None))?.take()
-        ).map_err(|e| Error::WatchlistFormat(Some(e)))?)
-    }).collect::<Result<Vec<Vec<WatchlistItem>>, Error>>()?;
+        ).map_err(|e| Error::WatchlistFormat(Some(e)))?;
+        let mut filtered_watchlist = HashMap::default();
+        for watchlist_item in watchlist {
+            // only show the oldest unread event of each page
+            if filtered_watchlist.entry(watchlist_item.pageid).or_insert_with(|| watchlist_item.clone()).old_revid > watchlist_item.old_revid {
+                filtered_watchlist.insert(watchlist_item.pageid, watchlist_item);
+            }
+        }
+        Ok(filtered_watchlist)
+    }).collect::<Result<Vec<HashMap<u64, WatchlistItem>>, Error>>()?;
     let mut text = String::default();
-    let total = watchlists.iter().map(Vec::len).sum::<usize>();
+    let total = watchlists.iter().map(HashMap::len).sum::<usize>();
     if total > 0 {
         writeln!(&mut text, "{}|templateImage={}\n", total, TOURNESOL)?;
         for (watchlist, wiki_config) in watchlists.into_iter().zip(config.wikis) {
             if !watchlist.is_empty() {
                 writeln!(&mut text, "---")?;
                 writeln!(&mut text, "{}|", wiki_config.display_name)?;
-                for watchlist_item in watchlist {
+                for (_, watchlist_item) in watchlist {
                     writeln!(&mut text, "{}|href={}?pageid={}&diff=next&oldid={}", watchlist_item.title, wiki_config.index_url, watchlist_item.pageid, watchlist_item.old_revid)?;
                 }
             }
