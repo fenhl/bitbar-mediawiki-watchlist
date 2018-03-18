@@ -74,7 +74,7 @@ fn bitbar() -> Result<String, Error> {
     let watchlists = config.wikis.iter().map(|wiki_config| {
         wikibase_config.set_api_url(&wiki_config.api_url[..]);
         let mut json = wikibase::requests::wikibase_request(
-            &format!("{}?action=query&format=json&list=watchlist&wllimit=max&wlshow=unread&wlowner={}&wltoken={}", wiki_config.api_url, wiki_config.username, wiki_config.watchlist_token),
+            &format!("{}?action=query&format=json&list=watchlist&wldir=newer&wllimit=max&wlshow=unread&wlowner={}&wltoken={}", wiki_config.api_url, wiki_config.username, wiki_config.watchlist_token),
             &wikibase_config
         )?;
         Ok(serde_json::from_value::<Vec<WatchlistItem>>(
