@@ -4,8 +4,9 @@
 
 extern crate itertools;
 
-use std::{env, io};
+use std::{env, io, thread};
 use std::process::Command;
+use std::time::Duration;
 
 use itertools::Itertools;
 
@@ -40,6 +41,7 @@ fn main_inner() -> Result<(), Error> {
     for mut process in processes {
         process.wait()?;
     }
+    thread::sleep(Duration::from_secs(2)); // wait for 2 seconds to allow for marking pages as visited before letting BitBar refresh the plugin
     Ok(())
 }
 

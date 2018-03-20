@@ -105,7 +105,7 @@ fn bitbar() -> Result<String, Error> {
                     let open_all_args = watchlist.iter().enumerate().map(|(i, (_, watchlist_item))| {
                         format!("param{}={} param{}={}", 2 * i + 2, watchlist_item.pageid, 2 * i + 3, watchlist_item.old_revid)
                     }).collect::<Vec<_>>();
-                    writeln!(&mut text, "{}|bash={} param1={} {} terminal=false",
+                    writeln!(&mut text, "{}|bash={} param1={} {} terminal=false refresh=true",
                         wiki_config.display_name,
                         open_all.to_str().ok_or(Error::InvalidOpenAllPath)?,
                         wiki_config.index_url,
