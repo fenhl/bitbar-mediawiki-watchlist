@@ -10,6 +10,7 @@ extern crate xdg_basedir;
 use std::collections::HashMap;
 use std::fmt::{self, Write};
 use std::fs::File;
+use std::path::PathBuf;
 
 /// A monocolored, resized version of https://commons.wikimedia.org/wiki/File:Mediawiki_logo_sunflower.svg
 ///
@@ -27,7 +28,9 @@ struct ConfigWiki {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Config {
+    open_all: Option<PathBuf>,
     wikis: Vec<ConfigWiki>
 }
 
@@ -44,6 +47,7 @@ impl Config {
 enum Error {
     ConfigFormat(serde_json::Error),
     Fmt(fmt::Error),
+    InvalidOpenAllPath,
     MissingConfig,
     WatchlistFormat(Option<serde_json::Error>),
     Wikibase(wikibase::WikibaseError)
@@ -97,7 +101,19 @@ fn bitbar() -> Result<String, Error> {
         for (watchlist, wiki_config) in watchlists.into_iter().zip(config.wikis) {
             if !watchlist.is_empty() {
                 writeln!(&mut text, "---")?;
-                writeln!(&mut text, "{}|", wiki_config.display_name)?;
+                if let Some(ref open_all) = config.open_all {
+                    let open_all_args = watchlist.iter().enumerate().map(|(i, (_, watchlist_item))| {
+                        format!("param{}={} param{}={}", 2 * i + 2, watchlist_item.pageid, 2 * i + 3, watchlist_item.old_revid)
+                    }).collect::<Vec<_>>();
+                    writeln!(&mut text, "{}|bash={} param1={} {} terminal=false",
+                        wiki_config.display_name,
+                        open_all.to_str().ok_or(Error::InvalidOpenAllPath)?,
+                        wiki_config.index_url,
+                        open_all_args.join(" ")
+                    )?;
+                } else {
+                    writeln!(&mut text, "{}|", wiki_config.display_name)?;
+                }
                 for (_, watchlist_item) in watchlist {
                     writeln!(&mut text, "{}|href={}?pageid={}&diff=next&oldid={}", watchlist_item.title, wiki_config.index_url, watchlist_item.pageid, watchlist_item.old_revid)?;
                 }
@@ -115,6 +131,7 @@ fn main() {
             println!("---");
             match e {
                 Error::ConfigFormat(e) => { println!("error in config file: {}", e); }
+                Error::InvalidOpenAllPath => { println!("openAll is not a valid path"); }
                 Error::MissingConfig => { println!("missing or invalid configuration file"); } //TODO better error message
                 Error::WatchlistFormat(Some(e)) => { println!("received incorrectly formatted watchlist: {}", e); }
                 Error::WatchlistFormat(None) => { println!("did not receive watchlist"); }
