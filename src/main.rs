@@ -49,7 +49,7 @@ enum Error {
     Fmt(fmt::Error),
     InvalidOpenAllPath,
     MissingConfig,
-    WatchlistFormat(Option<serde_json::Error>),
+    WatchlistFormat(Result<serde_json::Error, serde_json::Value>),
     Wikibase(wikibase::WikibaseError)
 }
 
@@ -83,8 +83,10 @@ fn bitbar() -> Result<String, Error> {
             &wikibase_config
         )?;
         let watchlist = serde_json::from_value::<Vec<WatchlistItem>>(
-            json.pointer_mut("/query/watchlist").ok_or(Error::WatchlistFormat(None))?.take()
-        ).map_err(|e| Error::WatchlistFormat(Some(e)))?;
+            json.pointer_mut("/query/watchlist")
+                .map(serde_json::Value::take)
+                .ok_or_else(|| Error::WatchlistFormat(Err(json.clone())))?
+        ).map_err(|e| Error::WatchlistFormat(Ok(e)))?;
         let mut filtered_watchlist = HashMap::default();
         for watchlist_item in watchlist {
             // only show the oldest unread event of each page
@@ -133,8 +135,8 @@ fn main() {
                 Error::ConfigFormat(e) => { println!("error in config file: {}", e); }
                 Error::InvalidOpenAllPath => { println!("openAll is not a valid path"); }
                 Error::MissingConfig => { println!("missing or invalid configuration file"); } //TODO better error message
-                Error::WatchlistFormat(Some(e)) => { println!("received incorrectly formatted watchlist: {}", e); }
-                Error::WatchlistFormat(None) => { println!("did not receive watchlist"); }
+                Error::WatchlistFormat(Ok(e)) => { println!("received incorrectly formatted watchlist: {}", e); }
+                Error::WatchlistFormat(Err(json)) => { println!("did not receive watchlist, received {}", json); }
                 Error::Wikibase(wikibase::WikibaseError::Configuration(msg)) => { println!("wikibase configuration error: {}", msg); }
                 Error::Wikibase(wikibase::WikibaseError::Request(msg)) => { println!("wikibase request error: {}", msg); }
                 Error::Wikibase(wikibase::WikibaseError::Serialization(msg)) => { println!("wikibase serialization error: {}", msg); }
