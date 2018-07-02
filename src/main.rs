@@ -7,10 +7,15 @@ extern crate serde_json;
 extern crate wikibase;
 extern crate xdg_basedir;
 
-use std::collections::HashMap;
-use std::fmt::{self, Write};
-use std::fs::File;
-use std::path::PathBuf;
+use std::{
+    collections::BTreeMap,
+    fmt::{
+        self,
+        Write
+    },
+    fs::File,
+    path::PathBuf
+};
 
 /// A monocolored, resized version of https://commons.wikimedia.org/wiki/File:Mediawiki_logo_sunflower.svg
 ///
@@ -87,7 +92,7 @@ fn bitbar() -> Result<String, Error> {
                 .map(serde_json::Value::take)
                 .ok_or_else(|| Error::WatchlistFormat(Err(json.clone())))?
         ).map_err(|e| Error::WatchlistFormat(Ok(e)))?;
-        let mut filtered_watchlist = HashMap::default();
+        let mut filtered_watchlist = BTreeMap::default();
         for watchlist_item in watchlist {
             // only show the oldest unread event of each page
             if filtered_watchlist.entry(watchlist_item.pageid).or_insert_with(|| watchlist_item.clone()).old_revid > watchlist_item.old_revid {
@@ -95,9 +100,9 @@ fn bitbar() -> Result<String, Error> {
             }
         }
         Ok(filtered_watchlist)
-    }).collect::<Result<Vec<HashMap<u64, WatchlistItem>>, Error>>()?;
+    }).collect::<Result<Vec<BTreeMap<u64, WatchlistItem>>, Error>>()?;
     let mut text = String::default();
-    let total = watchlists.iter().map(HashMap::len).sum::<usize>();
+    let total = watchlists.iter().map(BTreeMap::len).sum::<usize>();
     if total > 0 {
         writeln!(&mut text, "{}|templateImage={}\n", total, TOURNESOL)?;
         for (watchlist, wiki_config) in watchlists.into_iter().zip(config.wikis) {
