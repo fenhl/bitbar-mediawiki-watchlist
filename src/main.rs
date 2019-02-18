@@ -2,11 +2,6 @@
 #![deny(unused, unused_qualifications)]
 #![forbid(unused_import_braces)]
 
-#[macro_use] extern crate serde_derive;
-extern crate serde_json;
-extern crate wikibase;
-extern crate xdg_basedir;
-
 use std::{
     collections::BTreeMap,
     fmt::{
@@ -16,6 +11,7 @@ use std::{
     fs::File,
     path::PathBuf
 };
+use serde_derive::Deserialize;
 
 /// A modified version of https://commons.wikimedia.org/wiki/File:Mediawiki_logo_sunflower.svg
 ///

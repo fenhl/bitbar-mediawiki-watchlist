@@ -2,6 +2,7 @@
 name = "bitbar-mediawiki-watchlist"
 version = "0.1.0"
 authors = ["Fenhl <fenhl@fenhl.net>"]
+edition = "2018"
 
 [[bin]]
 name = "bitbar-mediawiki-watchlist"
@@ -18,9 +19,9 @@ test = false
 bench = false
 
 [dependencies]
-itertools = "0.7.7"
-serde = "1.0.33"
-serde_derive = "1.0.33"
-serde_json = "1.0.11"
-wikibase = "0.2.0"
-xdg-basedir = "1.0.0"
+itertools = "*"
+serde = "1"
+serde_derive = "1"
+serde_json = "1"
+wikibase = "*"
+xdg-basedir = "1"

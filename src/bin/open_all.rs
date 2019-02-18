@@ -2,12 +2,13 @@
 #![deny(unused, unused_qualifications)]
 #![forbid(unused_import_braces)]
 
-extern crate itertools;
-
-use std::{env, io, thread};
-use std::process::Command;
-use std::time::Duration;
-
+use std::{
+    env,
+    io,
+    process::Command,
+    thread,
+    time::Duration
+};
 use itertools::Itertools;
 
 #[derive(Debug)]
@@ -24,7 +25,7 @@ impl From<io::Error> for Error {
     }
 }
 
-fn main_inner() -> Result<(), Error> {
+fn main() -> Result<(), Error> {
     let mut args = env::args();
     let _ = args.next(); // ignore executable name
     let wiki_url = args.next().ok_or(Error::MissingWikiUrl)?;
@@ -43,8 +44,4 @@ fn main_inner() -> Result<(), Error> {
     }
     thread::sleep(Duration::from_secs(2)); // wait for 2 seconds to allow for marking pages as visited before letting BitBar refresh the plugin
     Ok(())
-}
-
-fn main() {
-    main_inner().expect("error in open_all");
 }
