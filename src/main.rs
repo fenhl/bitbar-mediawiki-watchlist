@@ -2,6 +2,8 @@
 #![deny(unused, unused_qualifications)]
 #![forbid(unused_import_braces)]
 
+#[macro_use] extern crate maplit;
+
 use std::{
     collections::BTreeMap,
     env::{
@@ -68,9 +70,9 @@ enum Error {
     Io(io::Error),
     MissingConfig,
     OpenAll(OpenAllError),
+    Other(Box<dyn std::error::Error>),
     UrlParse(url::ParseError),
-    WatchlistFormat(Result<serde_json::Error, serde_json::Value>),
-    Wikibase(wikibase::WikibaseError)
+    WatchlistFormat(Result<serde_json::Error, serde_json::Value>)
 }
 
 impl From<fmt::Error> for Error {
@@ -91,15 +93,15 @@ impl From<OpenAllError> for Error {
     }
 }
 
-impl From<url::ParseError> for Error {
-    fn from(e: url::ParseError) -> Error {
-        Error::UrlParse(e)
+impl From<Box<dyn std::error::Error>> for Error {
+    fn from(e: Box<dyn std::error::Error>) -> Error {
+        Error::Other(e)
     }
 }
 
-impl From<wikibase::WikibaseError> for Error {
-    fn from(e: wikibase::WikibaseError) -> Error {
-        Error::Wikibase(e)
+impl From<url::ParseError> for Error {
+    fn from(e: url::ParseError) -> Error {
+        Error::UrlParse(e)
     }
 }
 
@@ -111,12 +113,21 @@ struct WatchlistItem {
     title: String
 }
 
-fn get_watchlist(wikibase_config: &mut wikibase::Configuration, wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
-    wikibase_config.set_api_url(&wiki_config.api_url[..]);
-    let mut json = wikibase::requests::wikibase_request(
-        &format!("{}?action=query&format=json&list=watchlist&wlallrev=1&wldir=newer&wllimit=max&wlshow=unread&wlowner={}&wltoken={}", wiki_config.api_url, wiki_config.username, wiki_config.watchlist_token),
-        &wikibase_config
-    )?;
+fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(reqwest::header::USER_AGENT, reqwest::header::HeaderValue::from_static(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION"))));
+    let client_builder = reqwest::Client::builder().default_headers(headers);
+    let api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder)?;
+    let mut json = api.get_query_api_json_all(&convert_args!(hashmap!(
+        "action" => "query",
+        "list" => "watchlist",
+        "wlallrev" => "1",
+        "wldir" => "newer",
+        "wllimit" => "max",
+        "wlshow" => "unread",
+        "wlowner" => &wiki_config.username[..],
+        "wltoken" => &wiki_config.watchlist_token[..]
+    )))?;
     let watchlist = serde_json::from_value::<Vec<WatchlistItem>>(
         json.pointer_mut("/query/watchlist")
             .map(serde_json::Value::take)
@@ -134,8 +145,7 @@ fn get_watchlist(wikibase_config: &mut wikibase::Configuration, wiki_config: &Co
 
 fn bitbar() -> Result<Menu, Error> {
     let config = Config::new()?;
-    let mut wikibase_config = wikibase::Configuration::new(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION")))?;
-    let watchlists = config.wikis.iter().map(|wiki_config| get_watchlist(&mut wikibase_config, wiki_config)).collect::<Result<Vec<_>, Error>>()?;
+    let watchlists = config.wikis.iter().map(|wiki_config| get_watchlist(wiki_config)).collect::<Result<Vec<_>, Error>>()?;
     let mut items = Vec::default();
     let total = watchlists.iter().map(BTreeMap::len).sum::<usize>();
     if total > 0 {
@@ -143,7 +153,7 @@ fn bitbar() -> Result<Menu, Error> {
         for (watchlist, wiki_config) in watchlists.into_iter().zip(config.wikis) {
             if !watchlist.is_empty() {
                 items.push(MenuItem::Sep);
-                if let Ok(ref exe_path) = current_exe() {
+                if let Ok(exe_path) = current_exe() {
                     items.push(ContentItem::new(&wiki_config.display_name)
                         .command(&[&exe_path.display().to_string(), "open-all", &wiki_config.display_name])
                         .refresh()
@@ -193,9 +203,8 @@ impl<T, E: fmt::Debug> ResultExt for Result<T, E> {
 
 fn open_all(args: env::Args) -> Result<(), Error> {
     let (display_name,) = args.collect_tuple().ok_or(OpenAllError::MissingDisplayName)?;
-    let mut wikibase_config = wikibase::Configuration::new(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION")))?;
     let (wiki_config,) = Config::new()?.wikis.into_iter().filter(|wiki_config| wiki_config.display_name == display_name).collect_tuple().ok_or(OpenAllError::UnknownWiki(display_name.to_string()))?;
-    let watchlist = get_watchlist(&mut wikibase_config, &wiki_config)?;
+    let watchlist = get_watchlist(&mut &wiki_config)?;
     let processes = watchlist.into_iter().map(|(_, watchlist_item)|
             Command::new("open")
                 .arg(format!("{}?pageid={}&diff=next&oldid={}", wiki_config.index_url, watchlist_item.pageid, watchlist_item.old_revid))
@@ -228,10 +237,6 @@ fn main() {
                     Error::MissingConfig => { println!("missing or invalid configuration file"); } //TODO better error message
                     Error::WatchlistFormat(Ok(e)) => { println!("received incorrectly formatted watchlist: {}", e); }
                     Error::WatchlistFormat(Err(json)) => { println!("did not receive watchlist, received {}", json); }
-                    Error::Wikibase(wikibase::WikibaseError::Configuration(msg)) => { println!("wikibase configuration error: {}", msg); }
-                    Error::Wikibase(wikibase::WikibaseError::Request(msg)) => { println!("wikibase request error: {}", msg); }
-                    Error::Wikibase(wikibase::WikibaseError::Serialization(msg)) => { println!("wikibase serialization error: {}", msg); }
-                    Error::Wikibase(wikibase::WikibaseError::Validation(msg)) => { println!("wikibase validation error: {}", msg); }
                     e => { println!("{:?}", e); } //TODO handle separately
                 }
             }
