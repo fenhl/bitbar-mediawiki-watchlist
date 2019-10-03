@@ -12,6 +12,7 @@ test = false
 bench = false
 
 [dependencies]
+derive_more = "*"
 itertools = "*"
 maplit = "1"
 mediawiki = "*"
@@ -20,8 +21,9 @@ reqwest = "*"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
-url = "1"
+url = "2"
 xdg-basedir = "1"
 
 [dependencies.bitbar]
 git = "https://github.com/fenhl/rust-bitbar"
+features = ["base64"]
