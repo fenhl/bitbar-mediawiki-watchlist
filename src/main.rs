@@ -25,7 +25,7 @@ use {
     derive_more::From,
     itertools::Itertools,
     notify_rust::Notification,
-    serde_derive::Deserialize
+    serde::Deserialize
 };
 
 #[derive(Deserialize)]
