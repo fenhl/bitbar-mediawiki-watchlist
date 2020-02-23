@@ -214,17 +214,25 @@ fn main() {
         match bitbar() {
             Ok(menu) => { print!("{}", menu); }
             Err(e) => {
-                print!("{}", Menu(vec![
+                let mut error_menu = vec![
                     ContentItem::new("?").template_image(&include_bytes!("../assets/tournesol.png")[..]).never_unwrap().into(),
-                    MenuItem::Sep,
-                    MenuItem::new(match e {
-                        Error::ConfigFormat(e) => format!("error in config file: {}", e),
-                        Error::MissingConfig => format!("missing or invalid configuration file"), //TODO better error message
-                        Error::WatchlistFormat(Ok(e)) => format!("received incorrectly formatted watchlist: {}", e),
-                        Error::WatchlistFormat(Err(json)) => format!("did not receive watchlist, received {}", json),
-                        e => format!("{:?}", e) //TODO handle separately
-                    })
-                ]));
+                    MenuItem::Sep
+                ];
+                match e {
+                    Error::ConfigFormat(e) => { error_menu.push(MenuItem::new(format!("error in config file: {}", e))); }
+                    Error::Fmt(e) => { error_menu.push(MenuItem::new(format!("formatting error: {}", e))); }
+                    Error::Io(e) => { error_menu.push(MenuItem::new(format!("I/O error: {}", e))); }
+                    Error::MissingConfig => { error_menu.push(MenuItem::new("missing or invalid configuration file")); } //TODO better error message
+                    Error::OpenAll(_) => unreachable!(),
+                    Error::Other(e) => {
+                        error_menu.push(MenuItem::new(&e));
+                        error_menu.push(MenuItem::new(format!("{:?}", e)));
+                    }
+                    Error::UrlParse(e) => { error_menu.push(MenuItem::new(format!("error parsing URL: {}", e))); }
+                    Error::WatchlistFormat(Ok(e)) => { error_menu.push(MenuItem::new(format!("received incorrectly formatted watchlist: {}", e))); }
+                    Error::WatchlistFormat(Err(json)) => { error_menu.push(MenuItem::new(format!("did not receive watchlist, received {}", json))); }
+                }
+                print!("{}", Menu(error_menu));
             }
         }
     }
