@@ -1,34 +1,37 @@
 #![deny(rust_2018_idioms, unused, unused_import_braces, unused_qualifications, warnings)]
 
-#[macro_use] extern crate maplit;
-
 use {
     std::{
         collections::BTreeMap,
-        convert::Infallible,
+        convert::Infallible as Never,
         env::{
             self,
-            current_exe
+            current_exe,
         },
         fmt,
         fs::File,
         io,
         process::Command,
         thread,
-        time::Duration
+        time::Duration,
     },
     bitbar::{
         ContentItem,
         Menu,
-        MenuItem
+        MenuItem,
     },
     derive_more::From,
+    futures::prelude::*,
     itertools::Itertools,
+    maplit::{
+        convert_args,
+        hashmap,
+    },
     notify_rust::Notification,
-    serde::Deserialize
+    serde::Deserialize,
 };
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConfigWiki {
     display_name: String,
@@ -60,6 +63,7 @@ enum OpenAllError {
 
 #[derive(Debug, From)]
 enum Error {
+    #[from(ignore)]
     ConfigFormat(serde_json::Error),
     Fmt(fmt::Error),
     Io(io::Error),
@@ -67,11 +71,13 @@ enum Error {
     OpenAll(OpenAllError),
     Other(Box<dyn std::error::Error>),
     UrlParse(url::ParseError),
-    WatchlistFormat(Result<serde_json::Error, serde_json::Value>)
+    #[from(ignore)]
+    WatchlistFormatInner(ConfigWiki, serde_json::Error),
+    WatchlistFormatOuter(ConfigWiki, serde_json::Value),
 }
 
-impl From<Infallible> for Error {
-    fn from(never: Infallible) -> Error {
+impl From<Never> for Error {
+    fn from(never: Never) -> Error {
         match never {}
     }
 }
@@ -88,7 +94,7 @@ trait ResultNeverExt<T> {
     fn never_unwrap(self) -> T;
 }
 
-impl<T> ResultNeverExt<T> for Result<T, Infallible> {
+impl<T> ResultNeverExt<T> for Result<T, Never> {
     fn never_unwrap(self) -> T {
         match self {
             Ok(inner) => inner,
@@ -97,11 +103,11 @@ impl<T> ResultNeverExt<T> for Result<T, Infallible> {
     }
 }
 
-fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
+async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(reqwest::header::USER_AGENT, reqwest::header::HeaderValue::from_static(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION"))));
     let client_builder = reqwest::Client::builder().default_headers(headers);
-    let api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder)?;
+    let api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder).await?;
     let mut json = api.get_query_api_json_all(&convert_args!(hashmap!(
         "action" => "query",
         "list" => "watchlist",
@@ -111,12 +117,12 @@ fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem
         "wlshow" => "unread",
         "wlowner" => &wiki_config.username[..],
         "wltoken" => &wiki_config.watchlist_token[..]
-    )))?;
+    ))).await?;
     let watchlist = serde_json::from_value::<Vec<WatchlistItem>>(
         json.pointer_mut("/query/watchlist")
             .map(serde_json::Value::take)
-            .ok_or_else(|| Error::WatchlistFormat(Err(json.clone())))?
-    ).map_err(|e| Error::WatchlistFormat(Ok(e)))?;
+            .ok_or_else(|| Error::WatchlistFormatOuter(wiki_config.clone(), json.clone()))?
+    ).map_err(|e| Error::WatchlistFormatInner(wiki_config.clone(), e))?;
     let mut filtered_watchlist = BTreeMap::default();
     for watchlist_item in watchlist {
         // only show the oldest unread event of each page
@@ -127,9 +133,9 @@ fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem
     Ok(filtered_watchlist)
 }
 
-fn bitbar() -> Result<Menu, Error> {
+async fn bitbar() -> Result<Menu, Error> {
     let config = Config::new()?;
-    let watchlists = config.wikis.iter().map(|wiki_config| get_watchlist(wiki_config)).collect::<Result<Vec<_>, Error>>()?;
+    let watchlists = stream::iter(&config.wikis).then(get_watchlist).try_collect::<Vec<_>>().await?;
     let mut items = Vec::default();
     let total = watchlists.iter().map(BTreeMap::len).sum::<usize>();
     if total > 0 {
@@ -185,10 +191,10 @@ impl<T, E: fmt::Debug> ResultExt for Result<T, E> {
     }
 }
 
-fn open_all(args: env::Args) -> Result<(), Error> {
+async fn open_all(args: env::Args) -> Result<(), Error> {
     let (display_name,) = args.collect_tuple().ok_or(OpenAllError::MissingDisplayName)?;
     let (wiki_config,) = Config::new()?.wikis.into_iter().filter(|wiki_config| wiki_config.display_name == display_name).collect_tuple().ok_or(OpenAllError::UnknownWiki(display_name.to_string()))?;
-    let watchlist = get_watchlist(&mut &wiki_config)?;
+    let watchlist = get_watchlist(&mut &wiki_config).await?;
     let processes = watchlist.into_iter().map(|(_, watchlist_item)|
             Command::new("open")
                 .arg(format!("{}?pageid={}&diff=next&oldid={}", wiki_config.index_url, watchlist_item.pageid, watchlist_item.old_revid))
@@ -202,16 +208,17 @@ fn open_all(args: env::Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn main() {
+#[wheel::main]
+async fn main() -> Result<(), Never> {
     let mut args = env::args();
     let _ = args.next(); // ignore executable name
     if let Some(arg) = args.next() {
         match &arg[..] {
-            "open-all" => { open_all(args).notify("error in open-all cmd"); }
+            "open-all" => { open_all(args).await.notify("error in open-all cmd"); }
             subcmd => { notify("unknown subcommand", subcmd); }
         }
     } else {
-        match bitbar() {
+        match bitbar().await {
             Ok(menu) => { print!("{}", menu); }
             Err(e) => {
                 let mut error_menu = vec![
@@ -229,11 +236,18 @@ fn main() {
                         error_menu.push(MenuItem::new(format!("{:?}", e)));
                     }
                     Error::UrlParse(e) => { error_menu.push(MenuItem::new(format!("error parsing URL: {}", e))); }
-                    Error::WatchlistFormat(Ok(e)) => { error_menu.push(MenuItem::new(format!("received incorrectly formatted watchlist: {}", e))); }
-                    Error::WatchlistFormat(Err(json)) => { error_menu.push(MenuItem::new(format!("did not receive watchlist, received {}", json))); }
+                    Error::WatchlistFormatInner(config, e) => {
+                        error_menu.push(MenuItem::new(format!("received incorrectly formatted watchlist for {}", config.display_name)));
+                        error_menu.push(MenuItem::new(e));
+                    }
+                    Error::WatchlistFormatOuter(config, json) => {
+                        error_menu.push(MenuItem::new(format!("did not receive watchlist for {}, received:", config.display_name)));
+                        error_menu.push(MenuItem::new(json));
+                    }
                 }
                 print!("{}", Menu(error_menu));
             }
         }
     }
+    Ok(())
 }
