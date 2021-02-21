@@ -1,13 +1,12 @@
-#![deny(rust_2018_idioms, unused, unused_import_braces, unused_qualifications, warnings)]
+#![deny(rust_2018_idioms, unused, unused_crate_dependencies, unused_import_braces, unused_qualifications, warnings)]
+#![forbid(unsafe_code)]
 
 use {
     std::{
         collections::BTreeMap,
         convert::Infallible as Never,
-        env::{
-            self,
-            current_exe,
-        },
+        env::current_exe,
+        ffi::OsString,
         fmt,
         fs::File,
         io,
@@ -27,7 +26,7 @@ use {
         convert_args,
         hashmap,
     },
-    notify_rust::Notification,
+    mediawiki::media_wiki_error::MediaWikiError,
     serde::Deserialize,
 };
 
@@ -38,12 +37,12 @@ struct ConfigWiki {
     api_url: String,
     index_url: String,
     username: String,
-    watchlist_token: String
+    watchlist_token: String,
 }
 
 #[derive(Deserialize)]
 struct Config {
-    wikis: Vec<ConfigWiki>
+    wikis: Vec<ConfigWiki>,
 }
 
 impl Config {
@@ -67,8 +66,10 @@ enum Error {
     ConfigFormat(serde_json::Error),
     Fmt(fmt::Error),
     Io(io::Error),
+    MediaWiki(MediaWikiError),
     MissingConfig,
     OpenAll(OpenAllError),
+    OsString(OsString),
     Other(Box<dyn std::error::Error>),
     UrlParse(url::ParseError),
     #[from(ignore)]
@@ -82,12 +83,53 @@ impl From<Never> for Error {
     }
 }
 
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::ConfigFormat(e) => write!(f, "error in config file: {}", e),
+            Error::Fmt(e) => write!(f, "formatting error: {}", e),
+            Error::Io(e) => write!(f, "I/O error: {}", e),
+            Error::MediaWiki(e) => write!(f, "MediaWiki error: {}", e),
+            Error::MissingConfig => write!(f, "missing or invalid configuration file"),
+            Error::OpenAll(OpenAllError::MissingDisplayName) => write!(f, "open_all command called with no display name"),
+            Error::OpenAll(OpenAllError::UnknownWiki(wiki)) => write!(f, "error in open_all command: unknown wiki: {}", wiki),
+            Error::OsString(_) => write!(f, "subcommand received non-UTF-8 argument"),
+            Error::Other(e) => e.fmt(f),
+            Error::UrlParse(e) => write!(f, "error parsing URL: {}", e),
+            Error::WatchlistFormatInner(config, e) => write!(f, "received incorrectly formatter watchlist for {}: {}", config.display_name, e),
+            Error::WatchlistFormatOuter(config, json) => write!(f, "did not receive watchlist for {}, received: {}", config.display_name, json),
+        }
+    }
+}
+
+impl From<Error> for Menu {
+    fn from(e: Error) -> Menu {
+        let mut error_menu = Vec::default();
+        match e {
+            Error::Other(e) => {
+                error_menu.push(MenuItem::new(&e));
+                error_menu.push(MenuItem::new(format!("{:?}", e)));
+            }
+            Error::WatchlistFormatInner(config, e) => {
+                error_menu.push(MenuItem::new(format!("received incorrectly formatted watchlist for {}", config.display_name)));
+                error_menu.push(MenuItem::new(e));
+            }
+            Error::WatchlistFormatOuter(config, json) => {
+                error_menu.push(MenuItem::new(format!("did not receive watchlist for {}, received:", config.display_name)));
+                error_menu.push(MenuItem::new(json));
+            }
+            _ => error_menu.push(MenuItem::new(e)),
+        }
+        Menu(error_menu)
+    }
+}
+
 #[derive(Clone, Deserialize)]
 struct WatchlistItem {
     old_revid: u64,
     //revid: u64,
     pageid: u64,
-    title: String
+    title: String,
 }
 
 trait ResultNeverExt<T> {
@@ -98,15 +140,15 @@ impl<T> ResultNeverExt<T> for Result<T, Never> {
     fn never_unwrap(self) -> T {
         match self {
             Ok(inner) => inner,
-            Err(never) => match never {}
+            Err(never) => match never {},
         }
     }
 }
 
 async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(reqwest::header::USER_AGENT, reqwest::header::HeaderValue::from_static(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION"))));
-    let client_builder = reqwest::Client::builder().default_headers(headers);
+    let client_builder = reqwest::Client::builder()
+        .user_agent(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(30));
     let api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder).await?;
     let mut json = api.get_query_api_json_all(&convert_args!(hashmap!(
         "action" => "query",
@@ -133,7 +175,27 @@ async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, Watchli
     Ok(filtered_watchlist)
 }
 
-async fn bitbar() -> Result<Menu, Error> {
+#[bitbar::command]
+async fn open_all(args: impl Iterator<Item = OsString>) -> Result<(), Error> {
+    let (display_name,) = args.collect_tuple().ok_or(OpenAllError::MissingDisplayName)?;
+    let display_name = display_name.into_string()?;
+    let (wiki_config,) = Config::new()?.wikis.into_iter().filter(|wiki_config| wiki_config.display_name == display_name).collect_tuple().ok_or(OpenAllError::UnknownWiki(display_name.to_string()))?;
+    let watchlist = get_watchlist(&mut &wiki_config).await?;
+    let processes = watchlist.into_iter().map(|(_, watchlist_item)|
+            Command::new("open")
+                .arg(format!("{}?pageid={}&diff=next&oldid={}", wiki_config.index_url, watchlist_item.pageid, watchlist_item.old_revid))
+                .spawn()
+        )
+        .collect::<Result<Vec<_>, _>>()?;
+    for mut process in processes {
+        process.wait()?;
+    }
+    thread::sleep(Duration::from_secs(2)); // wait for 2 seconds to allow for marking pages as visited before letting BitBar refresh the plugin
+    Ok(())
+}
+
+#[bitbar::main(error_template_image = "../assets/tournesol.png")]
+async fn main() -> Result<Menu, Error> {
     let config = Config::new()?;
     let watchlists = stream::iter(&config.wikis).then(get_watchlist).try_collect::<Vec<_>>().await?;
     let mut items = Vec::default();
@@ -145,7 +207,7 @@ async fn bitbar() -> Result<Menu, Error> {
                 items.push(MenuItem::Sep);
                 if let Ok(exe_path) = current_exe() {
                     items.push(ContentItem::new(&wiki_config.display_name)
-                        .command((exe_path.display(), "open-all", wiki_config.display_name))
+                        .command((exe_path.display(), "open_all", wiki_config.display_name))
                         .refresh()
                         .into()
                     );
@@ -162,92 +224,4 @@ async fn bitbar() -> Result<Menu, Error> {
         }
     }
     Ok(Menu(items))
-}
-
-fn notify(summary: impl fmt::Display, body: impl fmt::Display) -> ! {
-    //let _ = notify_rust::set_application(&notify_rust::get_bundle_identifier_or_default("BitBar")); //TODO uncomment when https://github.com/h4llow3En/mac-notification-sys/issues/8 is fixed
-    let _ = Notification::default()
-        .summary(&summary.to_string())
-        .sound_name("Funk")
-        .body(&body.to_string())
-        .show();
-    panic!("{}: {}", summary, body);
-}
-
-trait ResultExt {
-    type Ok;
-
-    fn notify(self, summary: impl fmt::Display) -> Self::Ok;
-}
-
-impl<T, E: fmt::Debug> ResultExt for Result<T, E> {
-    type Ok = T;
-
-    fn notify(self, summary: impl fmt::Display) -> T {
-        match self {
-            Ok(t) => t,
-            Err(e) => { notify(summary, format!("{:?}", e)); }
-        }
-    }
-}
-
-async fn open_all(args: env::Args) -> Result<(), Error> {
-    let (display_name,) = args.collect_tuple().ok_or(OpenAllError::MissingDisplayName)?;
-    let (wiki_config,) = Config::new()?.wikis.into_iter().filter(|wiki_config| wiki_config.display_name == display_name).collect_tuple().ok_or(OpenAllError::UnknownWiki(display_name.to_string()))?;
-    let watchlist = get_watchlist(&mut &wiki_config).await?;
-    let processes = watchlist.into_iter().map(|(_, watchlist_item)|
-            Command::new("open")
-                .arg(format!("{}?pageid={}&diff=next&oldid={}", wiki_config.index_url, watchlist_item.pageid, watchlist_item.old_revid))
-                .spawn()
-        )
-        .collect::<Result<Vec<_>, _>>()?;
-    for mut process in processes {
-        process.wait()?;
-    }
-    thread::sleep(Duration::from_secs(2)); // wait for 2 seconds to allow for marking pages as visited before letting BitBar refresh the plugin
-    Ok(())
-}
-
-#[wheel::main]
-async fn main() -> Result<(), Never> {
-    let mut args = env::args();
-    let _ = args.next(); // ignore executable name
-    if let Some(arg) = args.next() {
-        match &arg[..] {
-            "open-all" => { open_all(args).await.notify("error in open-all cmd"); }
-            subcmd => { notify("unknown subcommand", subcmd); }
-        }
-    } else {
-        match bitbar().await {
-            Ok(menu) => { print!("{}", menu); }
-            Err(e) => {
-                let mut error_menu = vec![
-                    ContentItem::new("?").template_image(&include_bytes!("../assets/tournesol.png")[..]).never_unwrap().into(),
-                    MenuItem::Sep
-                ];
-                match e {
-                    Error::ConfigFormat(e) => { error_menu.push(MenuItem::new(format!("error in config file: {}", e))); }
-                    Error::Fmt(e) => { error_menu.push(MenuItem::new(format!("formatting error: {}", e))); }
-                    Error::Io(e) => { error_menu.push(MenuItem::new(format!("I/O error: {}", e))); }
-                    Error::MissingConfig => { error_menu.push(MenuItem::new("missing or invalid configuration file")); } //TODO better error message
-                    Error::OpenAll(_) => unreachable!(),
-                    Error::Other(e) => {
-                        error_menu.push(MenuItem::new(&e));
-                        error_menu.push(MenuItem::new(format!("{:?}", e)));
-                    }
-                    Error::UrlParse(e) => { error_menu.push(MenuItem::new(format!("error parsing URL: {}", e))); }
-                    Error::WatchlistFormatInner(config, e) => {
-                        error_menu.push(MenuItem::new(format!("received incorrectly formatted watchlist for {}", config.display_name)));
-                        error_menu.push(MenuItem::new(e));
-                    }
-                    Error::WatchlistFormatOuter(config, json) => {
-                        error_menu.push(MenuItem::new(format!("did not receive watchlist for {}, received:", config.display_name)));
-                        error_menu.push(MenuItem::new(json));
-                    }
-                }
-                print!("{}", Menu(error_menu));
-            }
-        }
-    }
-    Ok(())
 }
