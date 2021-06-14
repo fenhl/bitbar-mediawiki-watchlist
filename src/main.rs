@@ -194,14 +194,14 @@ async fn open_all(args: impl Iterator<Item = OsString>) -> Result<(), Error> {
     Ok(())
 }
 
-#[bitbar::main(error_template_image = "../assets/tournesol.png")]
+#[bitbar::main(error_template_image = "../assets/mediawiki-small.png")]
 async fn main() -> Result<Menu, Error> {
     let config = Config::new()?;
     let watchlists = stream::iter(&config.wikis).then(get_watchlist).try_collect::<Vec<_>>().await?;
     let mut items = Vec::default();
     let total = watchlists.iter().map(BTreeMap::len).sum::<usize>();
     if total > 0 {
-        items.push(ContentItem::new(total).template_image(&include_bytes!("../assets/tournesol.png")[..])?.into());
+        items.push(ContentItem::new(total).template_image(&include_bytes!("../assets/mediawiki-small.png")[..])?.into());
         for (watchlist, wiki_config) in watchlists.into_iter().zip(config.wikis) {
             if !watchlist.is_empty() {
                 items.push(MenuItem::Sep);
