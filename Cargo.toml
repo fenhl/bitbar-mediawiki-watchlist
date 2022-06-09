@@ -1,6 +1,6 @@
 [package]
 name = "bitbar-mediawiki-watchlist"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Fenhl <fenhl@fenhl.net>"]
 edition = "2018"
 
@@ -13,19 +13,19 @@ futures = "0.3"
 itertools = "0.10"
 maplit = "1"
 mediawiki = "0.2"
-reqwest = "0.11"
 serde_json = "1"
+thiserror = "1"
 url = "2"
-xdg-basedir = "1"
+xdg = "2"
 
 [dependencies.bitbar]
-version = "0.4"
+version = "0.8"
 features = ["base64"]
 
-[dependencies.derive_more]
-version = "0.99"
+[dependencies.reqwest]
+version = "0.11"
 default-features = false
-features = ["from"]
+features = ["rustls-tls", "trust-dns"]
 
 [dependencies.serde]
 version = "1"

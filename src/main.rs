@@ -6,7 +6,6 @@ use {
         collections::BTreeMap,
         convert::Infallible as Never,
         env::current_exe,
-        ffi::OsString,
         fmt,
         fs::File,
         io,
@@ -19,7 +18,6 @@ use {
         Menu,
         MenuItem,
     },
-    derive_more::From,
     futures::prelude::*,
     itertools::Itertools,
     maplit::{
@@ -28,6 +26,7 @@ use {
     },
     mediawiki::media_wiki_error::MediaWikiError,
     serde::Deserialize,
+    xdg::BaseDirectories,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,58 +46,40 @@ struct Config {
 
 impl Config {
     fn new() -> Result<Config, Error> {
-        let dirs = xdg_basedir::get_config_home().into_iter().chain(xdg_basedir::get_config_dirs());
-        let file = dirs.filter_map(|cfg_dir| File::open(cfg_dir.join("bitbar/plugins/mediawiki-watchlist.json")).ok())
-            .next().ok_or(Error::MissingConfig)?;
+        let path = BaseDirectories::new()?.find_config_file("bitbar/plugins/mediawiki-watchlist.json").ok_or(Error::MissingConfig)?;
+        let file = File::open(path)?;
         Ok(serde_json::from_reader(file).map_err(Error::ConfigFormat)?)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 enum OpenAllError {
-    MissingDisplayName,
-    UnknownWiki(String)
+    #[error("error in open_all command: unknown wiki: {0}")]
+    UnknownWiki(String),
 }
 
-#[derive(Debug, From)]
+#[derive(Debug, thiserror::Error)]
 enum Error {
-    #[from(ignore)]
-    ConfigFormat(serde_json::Error),
-    Fmt(fmt::Error),
-    Io(io::Error),
-    MediaWiki(MediaWikiError),
+    #[error(transparent)] Fmt(#[from] fmt::Error),
+    #[error(transparent)] Io(#[from] io::Error),
+    #[error(transparent)] MediaWiki(#[from] MediaWikiError),
+    #[error(transparent)] OpenAll(#[from] OpenAllError),
+    #[error(transparent)] Other(#[from] Box<dyn std::error::Error>),
+    #[error(transparent)] UrlParse(#[from] url::ParseError),
+    #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
+    #[error("error in config file: {0}")]
+    ConfigFormat(#[source] serde_json::Error),
+    #[error("missing or invalid configuration file")]
     MissingConfig,
-    OpenAll(OpenAllError),
-    OsString(OsString),
-    Other(Box<dyn std::error::Error>),
-    UrlParse(url::ParseError),
-    #[from(ignore)]
+    #[error("received incorrectly formatter watchlist for {}: {1}", .0.display_name)]
     WatchlistFormatInner(ConfigWiki, serde_json::Error),
+    #[error("did not receive watchlist for {}, received: {1}", .0.display_name)]
     WatchlistFormatOuter(ConfigWiki, serde_json::Value),
 }
 
 impl From<Never> for Error {
     fn from(never: Never) -> Error {
         match never {}
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::ConfigFormat(e) => write!(f, "error in config file: {}", e),
-            Error::Fmt(e) => write!(f, "formatting error: {}", e),
-            Error::Io(e) => write!(f, "I/O error: {}", e),
-            Error::MediaWiki(e) => write!(f, "MediaWiki error: {}", e),
-            Error::MissingConfig => write!(f, "missing or invalid configuration file"),
-            Error::OpenAll(OpenAllError::MissingDisplayName) => write!(f, "open_all command called with no display name"),
-            Error::OpenAll(OpenAllError::UnknownWiki(wiki)) => write!(f, "error in open_all command: unknown wiki: {}", wiki),
-            Error::OsString(_) => write!(f, "subcommand received non-UTF-8 argument"),
-            Error::Other(e) => e.fmt(f),
-            Error::UrlParse(e) => write!(f, "error parsing URL: {}", e),
-            Error::WatchlistFormatInner(config, e) => write!(f, "received incorrectly formatter watchlist for {}: {}", config.display_name, e),
-            Error::WatchlistFormatOuter(config, json) => write!(f, "did not receive watchlist for {}, received: {}", config.display_name, json),
-        }
     }
 }
 
@@ -148,7 +129,8 @@ impl<T> ResultNeverExt<T> for Result<T, Never> {
 async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
     let client_builder = reqwest::Client::builder()
         .user_agent(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION")))
-        .timeout(Duration::from_secs(30));
+        .timeout(Duration::from_secs(30))
+        .use_rustls_tls();
     let api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder).await?;
     let mut json = api.get_query_api_json_all(&convert_args!(hashmap!(
         "action" => "query",
@@ -176,9 +158,7 @@ async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, Watchli
 }
 
 #[bitbar::command]
-async fn open_all(args: impl Iterator<Item = OsString>) -> Result<(), Error> {
-    let (display_name,) = args.collect_tuple().ok_or(OpenAllError::MissingDisplayName)?;
-    let display_name = display_name.into_string()?;
+async fn open_all(display_name: String) -> Result<(), Error> {
     let (wiki_config,) = Config::new()?.wikis.into_iter().filter(|wiki_config| wiki_config.display_name == display_name).collect_tuple().ok_or(OpenAllError::UnknownWiki(display_name.to_string()))?;
     let watchlist = get_watchlist(&mut &wiki_config).await?;
     let processes = watchlist.into_iter().map(|(_, watchlist_item)|
@@ -194,7 +174,10 @@ async fn open_all(args: impl Iterator<Item = OsString>) -> Result<(), Error> {
     Ok(())
 }
 
-#[bitbar::main(error_template_image = "../assets/mediawiki-small.png")]
+#[bitbar::main(
+    error_template_image = "../assets/mediawiki-small.png",
+    commands(open_all),
+)]
 async fn main() -> Result<Menu, Error> {
     let config = Config::new()?;
     let watchlists = stream::iter(&config.wikis).then(get_watchlist).try_collect::<Vec<_>>().await?;
@@ -207,7 +190,7 @@ async fn main() -> Result<Menu, Error> {
                 items.push(MenuItem::Sep);
                 if let Ok(exe_path) = current_exe() {
                     items.push(ContentItem::new(&wiki_config.display_name)
-                        .command((exe_path.display(), "open_all", wiki_config.display_name))
+                        .command((exe_path.display(), "open_all", wiki_config.display_name))?
                         .refresh()
                         .into()
                     );
