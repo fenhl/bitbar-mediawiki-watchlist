@@ -191,7 +191,7 @@ dependencies = [
  "maplit",
  "mediawiki",
  "reqwest",
- "serde 1.0.138",
+ "serde 1.0.139",
  "serde_json",
  "thiserror",
  "url",
@@ -297,7 +297,7 @@ dependencies = [
  "lazy_static 1.4.0",
  "nom",
  "rust-ini",
- "serde 1.0.138",
+ "serde 1.0.139",
  "serde-hjson",
  "serde_json",
  "toml",
@@ -325,7 +325,7 @@ dependencies = [
  "idna",
  "log",
  "publicsuffix",
- "serde 1.0.138",
+ "serde 1.0.139",
  "serde_json",
  "time",
  "url",
@@ -482,7 +482,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e75d4cd21b95383444831539909fbb14b9dc3fdceb2a6f5d36577329a1f55ccb"
 dependencies = [
  "enumflags2_derive",
- "serde 1.0.138",
+ "serde 1.0.139",
 ]
 
 [[package]]
@@ -988,9 +988,9 @@ dependencies = [
 
 [[package]]
 name = "mac-notification-sys"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "042f74a606175d72ca483e14e0873fe0f6c003f7af45865b17b16fdaface7203"
+checksum = "47a4acb83c904844ca12aafeac6fff6f781cf9e220a985c1db94fd94123993aa"
 dependencies = [
  "cc",
  "dirs-next",
@@ -1136,7 +1136,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a995a3d2834cefa389218e7a35156e8ce544bc95f836900da01ee0b26a07e9d4"
 dependencies = [
  "mac-notification-sys",
- "serde 1.0.138",
+ "serde 1.0.139",
  "winrt-notification",
  "zbus",
  "zvariant",
@@ -1692,7 +1692,7 @@ dependencies = [
  "proc-macro-hack",
  "rustls",
  "rustls-pemfile",
- "serde 1.0.138",
+ "serde 1.0.139",
  "serde_json",
  "serde_urlencoded",
  "tokio",
@@ -1829,9 +1829,9 @@ checksum = "9dad3f759919b92c3068c696c15c3d17238234498bbdcc80f2c469606f948ac8"
 
 [[package]]
 name = "serde"
-version = "1.0.138"
+version = "1.0.139"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1578c6245786b9d168c5447eeacfb96856573ca56c9d68fdcf394be134882a47"
+checksum = "0171ebb889e45aa68b44aee0859b3eede84c6f5f5c228e6f140c0b2a0a46cad6"
 dependencies = [
  "serde_derive",
 ]
@@ -1851,9 +1851,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.138"
+version = "1.0.139"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "023e9b1467aef8a10fb88f25611870ada9800ef7e22afce356bb0d2387b6f27c"
+checksum = "dc1d3230c1de7932af58ad8ffbe1d784bd55efd5a9d84ac24f69c72d83543dfb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1868,7 +1868,7 @@ checksum = "82c2c1fdcd807d1098552c5b9a36e425e42e9fbd7c6a37a8425f390f781f7fa7"
 dependencies = [
  "itoa",
  "ryu",
- "serde 1.0.138",
+ "serde 1.0.139",
 ]
 
 [[package]]
@@ -1900,7 +1900,7 @@ dependencies = [
  "form_urlencoded",
  "itoa",
  "ryu",
- "serde 1.0.138",
+ "serde 1.0.139",
 ]
 
 [[package]]
@@ -2190,7 +2190,7 @@ version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d82e1a7758622a465f8cee077614c73484dac5b836c02ff6a40d5d1010324d7"
 dependencies = [
- "serde 1.0.138",
+ "serde 1.0.139",
 ]
 
 [[package]]
@@ -2687,7 +2687,7 @@ dependencies = [
  "once_cell",
  "ordered-stream",
  "rand 0.8.5",
- "serde 1.0.138",
+ "serde 1.0.139",
  "serde_repr",
  "sha1",
  "static_assertions",
@@ -2718,7 +2718,7 @@ version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "45dfcdcf87b71dad505d30cc27b1b7b88a64b6d1c435648f48f9dbc1fdc4b7e1"
 dependencies = [
- "serde 1.0.138",
+ "serde 1.0.139",
  "static_assertions",
  "zvariant",
 ]
@@ -2732,7 +2732,7 @@ dependencies = [
  "byteorder",
  "enumflags2",
  "libc",
- "serde 1.0.138",
+ "serde 1.0.139",
  "static_assertions",
  "zvariant_derive",
 ]
