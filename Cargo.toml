@@ -27,9 +27,9 @@ version = "0.8"
 features = ["base64"]
 
 [dependencies.reqwest]
-version = "0.11"
+version = "0.12"
 default-features = false
-features = ["rustls-tls", "trust-dns"]
+features = ["charset", "hickory-dns", "http2", "macos-system-configuration", "rustls-tls"]
 
 [dependencies.serde]
 version = "1"

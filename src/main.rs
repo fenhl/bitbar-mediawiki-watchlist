@@ -113,19 +113,6 @@ struct WatchlistItem {
     title: String,
 }
 
-trait ResultNeverExt<T> {
-    fn never_unwrap(self) -> T;
-}
-
-impl<T> ResultNeverExt<T> for Result<T, Never> {
-    fn never_unwrap(self) -> T {
-        match self {
-            Ok(inner) => inner,
-            Err(never) => match never {},
-        }
-    }
-}
-
 async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
     let client_builder = reqwest::Client::builder()
         .user_agent(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION")))
