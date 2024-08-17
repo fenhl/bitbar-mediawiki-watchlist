@@ -2,10 +2,16 @@ This is a BitBar plugin (supporting both [SwiftBar](https://swiftbar.app/) and [
 
 # Installing
 
-1. [Install Rust](https://www.rust-lang.org/en-US/install.html).
-2. Clone this repository.
-3. In the repository, run `cargo build --release`.
-4. Symlink the file `target/release/bitbar-mediawiki-watchlist` into your SwiftBar/xbar plugin directory.
+1. Install [SwiftBar](https://swiftbar.app/) or [xbar](https://xbarapp.com/).
+    * If you're unsure which to install, I recommend SwiftBar, as this plugin has been tested with it.
+    * If you have [Homebrew](https://brew.sh/), you can also install with `brew install --cask swiftbar` or `brew install --cask xbar`.
+2. [Install Rust](https://www.rust-lang.org/tools/install).
+    * If you have Homebrew, you can also install with `brew install rust`.
+3. Install the plugin:
+    ```sh
+    cargo install --git=https://github.com/fenhl/bitbar-mediawiki-watchlist --branch=main
+    ```
+4. Create a symlink to `~/.cargo/bin/bitbar-mediawiki-watchlist` in your SwiftBar/xbar plugin folder. Call it something like `bitbar-mediawiki-watchlist.30s.o`, where `30s` is the rate at which the plugin will check for notifications.
 5. At `~/.config/bitbar/plugins/mediawiki-watchlist.json`, create a [JSON](https://json.org/) file containing the following fields:
     * `"wikis"`, an array of objects, one for each wiki whose watchlist you want to display, each with the following fields:
         * `"displayName"`: a name for the wiki that will be displayed in the menu.
@@ -13,5 +19,4 @@ This is a BitBar plugin (supporting both [SwiftBar](https://swiftbar.app/) and [
         * `"indexUrl"`: The wiki's “index.php” URL, which can be found on the `Special:Version` page of the wiki, in section “Entry Point URLs”.
         * `"username"`: Your username on the wiki.
         * `"watchlistToken"`: Your watchlist token, which can be found on the “Watchlist” tab of the `Special:Preferences` page.
-    * Optionally, `"openAll"`, containing the full path to the `target/release/open-all` file in the cloned repo. If given, clicking on a wiki's display name will open all diff pages for that wiki.
-6. Refresh SwiftBar/xbar by opening a menu and pressing <kbd>⌘</kbd><kbd>R</kbd>.
+6. If you're using SwiftBar, the plugin should now appear in your menu bar. If it doesn't appear automatically, or if you're using xbar, refresh by opening a menu and pressing <kbd>⌘</kbd><kbd>R</kbd>.
