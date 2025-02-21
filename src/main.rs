@@ -112,10 +112,10 @@ struct WatchlistItem {
 
 async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
     let client_builder = reqwest::Client::builder()
-        .user_agent(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION"), " (https://github.com/fenhl/bitbar-mediawiki-watchlist)")) // https://www.mediawiki.org/wiki/API:Etiquette#The_User-Agent_header
         .timeout(Duration::from_secs(30))
         .use_rustls_tls();
-    let api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder).await?;
+    let mut api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder).await?;
+    api.set_user_agent(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION"), " (https://github.com/fenhl/bitbar-mediawiki-watchlist)")); // https://www.mediawiki.org/wiki/API:Etiquette#The_User-Agent_header
     let mut json = api.get_query_api_json_all(&convert_args!(hashmap!(
         "action" => "query",
         "list" => "watchlist",
