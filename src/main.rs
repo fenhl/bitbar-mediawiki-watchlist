@@ -68,10 +68,16 @@ enum Error {
     ConfigFormat(#[source] serde_json::Error),
     #[error("missing or invalid configuration file")]
     MissingConfig,
-    #[error("received incorrectly formatter watchlist for {}: {1}", .0.display_name)]
-    WatchlistFormatInner(ConfigWiki, serde_json::Error),
-    #[error("did not receive watchlist for {}, received: {1}", .0.display_name)]
-    WatchlistFormatOuter(ConfigWiki, serde_json::Value),
+    #[error("received incorrectly formatter watchlist for {}: {source}", .config.display_name)]
+    WatchlistFormatInner {
+        config: ConfigWiki,
+        source: serde_json::Error,
+    },
+    #[error("did not receive watchlist for {}, received: {json}", .config.display_name)]
+    WatchlistFormatOuter {
+        config: ConfigWiki,
+        json: serde_json::Value,
+    },
 }
 
 impl From<Never> for Error {
@@ -88,11 +94,11 @@ impl From<Error> for Menu {
                 error_menu.push(MenuItem::new(&e));
                 error_menu.push(MenuItem::new(format!("{:?}", e)));
             }
-            Error::WatchlistFormatInner(config, e) => {
+            Error::WatchlistFormatInner { config, source } => {
                 error_menu.push(MenuItem::new(format!("received incorrectly formatted watchlist for {}", config.display_name)));
-                error_menu.push(MenuItem::new(e));
+                error_menu.push(MenuItem::new(source));
             }
-            Error::WatchlistFormatOuter(config, json) => {
+            Error::WatchlistFormatOuter { config, json } => {
                 error_menu.push(MenuItem::new(format!("did not receive watchlist for {}, received:", config.display_name)));
                 error_menu.push(MenuItem::new(json));
             }
@@ -129,8 +135,8 @@ async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, Watchli
     let watchlist = serde_json::from_value::<Vec<WatchlistItem>>(
         json.pointer_mut("/query/watchlist")
             .map(serde_json::Value::take)
-            .ok_or_else(|| Error::WatchlistFormatOuter(wiki_config.clone(), json.clone()))?
-    ).map_err(|e| Error::WatchlistFormatInner(wiki_config.clone(), e))?;
+            .ok_or_else(|| Error::WatchlistFormatOuter { config: wiki_config.clone(), json: json.clone() })?
+    ).map_err(|source| Error::WatchlistFormatInner { config: wiki_config.clone(), source })?;
     let mut filtered_watchlist = BTreeMap::default();
     for watchlist_item in watchlist {
         // only show the oldest unread event of each page
