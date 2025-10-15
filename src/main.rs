@@ -106,6 +106,7 @@ impl From<Error> for Menu {
             }
             _ => error_menu.push(MenuItem::new(e)),
         }
+        error_menu.push(ContentItem::new("Refresh").refresh().into());
         Menu(error_menu)
     }
 }
