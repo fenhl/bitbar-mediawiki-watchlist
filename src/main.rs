@@ -46,7 +46,7 @@ struct Config {
 
 impl Config {
     fn new() -> Result<Config, Error> {
-        let path = BaseDirectories::new()?.find_config_file("bitbar/plugins/mediawiki-watchlist.json").ok_or(Error::MissingConfig)?;
+        let path = BaseDirectories::new().find_config_file("bitbar/plugins/mediawiki-watchlist.json").ok_or(Error::MissingConfig)?;
         let file = File::open(path)?;
         Ok(serde_json::from_reader(file).map_err(Error::ConfigFormat)?)
     }
@@ -66,7 +66,6 @@ enum Error {
     #[error(transparent)] OpenAll(#[from] OpenAllError),
     #[error(transparent)] Other(#[from] Box<dyn std::error::Error>),
     #[error(transparent)] UrlParse(#[from] url::ParseError),
-    #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
     #[error("error in config file: {0}")]
     ConfigFormat(#[source] serde_json::Error),
     #[error("missing or invalid configuration file")]
