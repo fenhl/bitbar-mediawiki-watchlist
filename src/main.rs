@@ -94,7 +94,7 @@ impl From<Error> for Menu {
         match e {
             Error::Other(e) => {
                 error_menu.push(MenuItem::new(&e));
-                error_menu.push(MenuItem::new(format!("{:?}", e)));
+                error_menu.push(MenuItem::new(format!("{e:?}")));
             }
             Error::WatchlistFormatInner { config, source } => {
                 error_menu.push(MenuItem::new(format!("received incorrectly formatted watchlist for {}", config.display_name)));
@@ -104,7 +104,10 @@ impl From<Error> for Menu {
                 error_menu.push(MenuItem::new(format!("did not receive watchlist for {}, received:", config.display_name)));
                 error_menu.push(MenuItem::new(json));
             }
-            _ => error_menu.push(MenuItem::new(e)),
+            _ => {
+                error_menu.push(MenuItem::new(&e));
+                error_menu.push(MenuItem::new(format!("{e:?}")));
+            }
         }
         error_menu.push(ContentItem::new("Refresh").refresh().into());
         Menu(error_menu)
