@@ -92,6 +92,16 @@ impl From<Error> for Menu {
     fn from(e: Error) -> Menu {
         let mut error_menu = Vec::default();
         match e {
+            Error::MediaWiki(MediaWikiError::Reqwest(e)) => {
+                error_menu.push(MenuItem::new(format!("reqwest error: {e}")));
+                if let Some(url) = e.url() {
+                    error_menu.push(ContentItem::new(format!("URL: {url}"))
+                        .href(url.clone()).expect("failed to parse the request error URL")
+                        .color("blue").expect("failed to parse the color blue")
+                        .into());
+                }
+                error_menu.push(MenuItem::new(format!("{e:?}")));
+            }
             Error::Other(e) => {
                 error_menu.push(MenuItem::new(&e));
                 error_menu.push(MenuItem::new(format!("{e:?}")));
