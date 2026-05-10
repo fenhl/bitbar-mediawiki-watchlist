@@ -1,8 +1,8 @@
 [package]
 name = "bitbar-mediawiki-watchlist"
-version = "0.2.8"
-authors = ["Fenhl <fenhl@fenhl.net>"]
+version = "0.2.9"
 edition = "2024"
+rust-version = "1.91" # nixpkgs stable
 
 [lints.rust]
 rust_2018_idioms = "deny"
@@ -24,14 +24,12 @@ bitbar = { version = "0.10", features = ["base64"] }
 futures = "0.3"
 itertools = "0.14"
 maplit = "1"
-mediawiki = "0.3"
-mimalloc = "0.1.43"
-reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "macos-system-configuration", "rustls-tls"] }
+mediawiki = "0.5"
+mimalloc = "0.1"
+reqwest = { version = "0.13", default-features = false, features = ["charset", "gzip", "hickory-dns", "http2", "rustls-no-provider", "system-proxy", "zstd"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { package = "serde_json_path_to_error", version = "0.1" }
 thiserror = "2"
 url = "2"
 xdg = "3"
-
-[patch.crates-io]
-mac-notification-sys = { git = "https://github.com/h4llow3En/mac-notification-sys" } # https://github.com/h4llow3En/mac-notification-sys/issues/79#issuecomment-3500005878

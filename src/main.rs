@@ -185,6 +185,7 @@ async fn open_all(display_name: String) -> Result<(), Error> {
     commands(open_all),
 )]
 async fn main() -> Result<Menu, Error> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let config = Config::new()?;
     let watchlists = stream::iter(&config.wikis).then(get_watchlist).try_collect::<Vec<_>>().await?;
     let mut items = Vec::default();
