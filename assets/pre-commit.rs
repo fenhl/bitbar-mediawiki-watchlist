@@ -67,5 +67,8 @@ async fn main() -> Result<(), Error> {
     println!("cargo check");
     Command::new("cargo").arg("+stable").arg("check").spawn().at_command("cargo check")?.check("cargo check").await?;
 
+    println!("nix build");
+    Command::new("nix").arg("build").arg("--no-link").spawn().at_command("nix build")?.check("nix build").await?;
+
     Ok(())
 }
