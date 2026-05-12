@@ -39,9 +39,13 @@ struct ConfigWiki {
     watchlist_token: String,
 }
 
+fn default_timeout() -> u64 { 30 }
+
 #[derive(Deserialize)]
 struct Config {
     wikis: Vec<ConfigWiki>,
+    #[serde(default = "default_timeout")]
+    timeout: u64,
 }
 
 impl Config {
@@ -132,9 +136,9 @@ struct WatchlistItem {
     title: String,
 }
 
-async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
+async fn get_watchlist(timeout: Duration, wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, WatchlistItem>, Error> {
     let client_builder = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
+        .timeout(timeout)
         .use_rustls_tls();
     let mut api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder).await?;
     api.set_user_agent(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION"), " (https://github.com/fenhl/bitbar-mediawiki-watchlist)")); // https://www.mediawiki.org/wiki/API:Etiquette#The_User-Agent_header
@@ -165,8 +169,9 @@ async fn get_watchlist(wiki_config: &ConfigWiki) -> Result<BTreeMap<u64, Watchli
 
 #[bitbar::command]
 async fn open_all(display_name: String) -> Result<(), Error> {
-    let (wiki_config,) = Config::new()?.wikis.into_iter().filter(|wiki_config| wiki_config.display_name == display_name).collect_tuple().ok_or(OpenAllError::UnknownWiki(display_name.to_string()))?;
-    let watchlist = get_watchlist(&mut &wiki_config).await?;
+    let config = Config::new()?;
+    let (wiki_config,) = config.wikis.into_iter().filter(|wiki_config| wiki_config.display_name == display_name).collect_tuple().ok_or(OpenAllError::UnknownWiki(display_name.to_string()))?;
+    let watchlist = get_watchlist(Duration::from_secs(config.timeout), &mut &wiki_config).await?;
     let processes = watchlist.into_iter().map(|(_, watchlist_item)|
             Command::new("open")
                 .arg(format!("{}?pageid={}&diff=next&oldid={}", wiki_config.index_url, watchlist_item.pageid, watchlist_item.old_revid))
@@ -187,7 +192,7 @@ async fn open_all(display_name: String) -> Result<(), Error> {
 async fn main() -> Result<Menu, Error> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let config = Config::new()?;
-    let watchlists = stream::iter(&config.wikis).then(get_watchlist).try_collect::<Vec<_>>().await?;
+    let watchlists = stream::iter(&config.wikis).then(|wiki_config| get_watchlist(Duration::from_secs(config.timeout), wiki_config)).try_collect::<Vec<_>>().await?;
     let mut items = Vec::default();
     let total = watchlists.iter().map(BTreeMap::len).sum::<usize>();
     if total > 0 {

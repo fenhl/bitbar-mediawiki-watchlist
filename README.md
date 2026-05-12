@@ -19,4 +19,5 @@ This is a BitBar plugin (supporting both [SwiftBar](https://swiftbar.app/) and [
         * `"indexUrl"`: The wiki's “index.php” URL, which can be found on the `Special:Version` page of the wiki, in section “Entry Point URLs”.
         * `"username"`: Your username on the wiki.
         * `"watchlistToken"`: Your watchlist token, which can be found on the “Watchlist” tab of the `Special:Preferences` page.
+    * `"timeout"`, an integer defining the number of seconds after which an HTTP request will time out. Optional, defaults to `30` if omitted.
 6. If you're using SwiftBar, the plugin should now appear in your menu bar. If it doesn't appear automatically, or if you're using xbar, refresh by opening a menu and pressing <kbd>⌘</kbd><kbd>R</kbd>.
