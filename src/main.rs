@@ -37,6 +37,8 @@ struct ConfigWiki {
     index_url: String,
     username: String,
     watchlist_token: String,
+    #[serde(default)]
+    ignore_errors: bool,
 }
 
 fn default_timeout() -> u64 { 30 }
@@ -196,7 +198,14 @@ async fn open_all(display_name: String) -> Result<(), Error> {
 async fn main() -> Result<Menu, Error> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let config = Config::new()?;
-    let watchlists = stream::iter(&config.wikis).then(|wiki_config| get_watchlist(Duration::from_secs(config.timeout), wiki_config)).try_collect::<Vec<_>>().await?;
+    let watchlists = stream::iter(&config.wikis).filter_map(|wiki_config| async {
+        let res = get_watchlist(Duration::from_secs(config.timeout), wiki_config).await;
+        if res.is_err() && wiki_config.ignore_errors {
+            None
+        } else {
+            Some(res)
+        }
+    }).try_collect::<Vec<_>>().await?;
     let mut items = Vec::default();
     let total = watchlists.iter().map(BTreeMap::len).sum::<usize>();
     if total > 0 {
