@@ -269,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "bitbar-mediawiki-watchlist"
-version = "0.2.10"
+version = "0.2.11"
 dependencies = [
  "bitbar",
  "futures",

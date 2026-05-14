@@ -66,12 +66,16 @@ enum OpenAllError {
 enum Error {
     #[error(transparent)] Fmt(#[from] fmt::Error),
     #[error(transparent)] Io(#[from] io::Error),
-    #[error(transparent)] MediaWiki(#[from] MediaWikiError),
     #[error(transparent)] OpenAll(#[from] OpenAllError),
     #[error(transparent)] Other(#[from] Box<dyn std::error::Error>),
     #[error(transparent)] UrlParse(#[from] url::ParseError),
     #[error("error in config file: {0}")]
     ConfigFormat(#[source] serde_json::Error),
+    #[error("error checking {wiki}: {source}")]
+    MediaWiki {
+        source: MediaWikiError,
+        wiki: String,
+    },
     #[error("missing or invalid configuration file")]
     MissingConfig,
     #[error("received incorrectly formatter watchlist for {}: {source}", .config.display_name)]
@@ -96,8 +100,8 @@ impl From<Error> for Menu {
     fn from(e: Error) -> Menu {
         let mut error_menu = Vec::default();
         match e {
-            Error::MediaWiki(MediaWikiError::Reqwest(e)) => {
-                error_menu.push(MenuItem::new(format!("reqwest error: {e}")));
+            Error::MediaWiki { source: MediaWikiError::Reqwest(e), wiki } => {
+                error_menu.push(MenuItem::new(format!("reqwest error for {wiki}: {e}")));
                 if let Some(url) = e.url() {
                     error_menu.push(ContentItem::new(format!("URL: {url}"))
                         .href(url.clone()).expect("failed to parse the request error URL")
@@ -140,7 +144,7 @@ async fn get_watchlist(timeout: Duration, wiki_config: &ConfigWiki) -> Result<BT
     let client_builder = reqwest::Client::builder()
         .timeout(timeout)
         .use_rustls_tls();
-    let mut api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder).await?;
+    let mut api = mediawiki::api::Api::new_from_builder(&wiki_config.api_url, client_builder).await.map_err(|source| Error::MediaWiki { wiki: wiki_config.display_name.clone(), source })?;
     api.set_user_agent(concat!("bitbar-mediawiki-watchlist/", env!("CARGO_PKG_VERSION"), " (https://github.com/fenhl/bitbar-mediawiki-watchlist)")); // https://www.mediawiki.org/wiki/API:Etiquette#The_User-Agent_header
     let mut json = api.get_query_api_json_all(&convert_args!(hashmap!(
         "action" => "query",
@@ -151,7 +155,7 @@ async fn get_watchlist(timeout: Duration, wiki_config: &ConfigWiki) -> Result<BT
         "wlshow" => "unread",
         "wlowner" => &wiki_config.username[..],
         "wltoken" => &wiki_config.watchlist_token[..]
-    ))).await?;
+    ))).await.map_err(|source| Error::MediaWiki { wiki: wiki_config.display_name.clone(), source })?;
     let watchlist = serde_json::from_value::<Vec<WatchlistItem>>(
         json.pointer_mut("/query/watchlist")
             .map(serde_json::Value::take)
